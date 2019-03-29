@@ -3,10 +3,39 @@ const socket = io();
 
 const form = document.querySelector('form');
 let input = form.querySelector('input'); // text box to enter the message
-let para1 = form.querySelector('#receivedMessage'); //first paragraph to display the message entered by user OR Location Details
-let para2 = form.querySelector('#notification'); //second paragraph to display notification about new user join and user leaving
 let sendButton = form.querySelector('#sendMsg'); //a button to send message from text box
 let shareButton = document.querySelector('#shareLocation'); //button to share user location
+
+const messages = document.querySelector('#messages');
+const sidebar = document.querySelector('#sidebar');
+const messageTemplate = document.querySelector('#message-template').innerHTML;
+const locationTemplate = document.querySelector('#location-template').innerHTML;
+const sidebarTemplate = document.querySelector('#sidebar-template').innerHTML;
+
+const {username, room} = Qs.parse(location.search, { ignoreQueryPrefix: true});
+
+const autoscroll = () => {
+    //new message element
+    const newMsg = messages.lastElementChild
+    //height of the new message
+    const newMsgStyles = getComputedStyle(newMsg);
+    const newMsgMargin = parseInt(newMsgStyles.marginBottom);
+    const newMsgHeight = newMsg.offsetHeight + newMsgMargin;
+    const visibleHeight = messages.offsetHeight;
+    const containerHeight = messages.scrollHeight;
+    const scrollOffset = messages.scrollTop + visibleHeight;
+
+    if(containerHeight - newMsgHeight <= scrollOffset) {
+        messages.scrollTop = messages.scrollHeight;
+    }
+};
+
+socket.emit('join', {username, room}, (error) => {
+    if(error) {
+        alert(error);
+        location.href = '/';
+    } 
+});
 
 const boilerPlate = () => {
     sendButton.removeAttribute('disabled'); 
@@ -14,29 +43,33 @@ const boilerPlate = () => {
     input.focus();
 };
 
-sendButton.addEventListener('click', () => {
-    
+socket.on('serverSentMsg', (userMessage) => {
+    boilerPlate();
+    const html = Mustache.render(messageTemplate, {
+        username: userMessage.username,
+        text: userMessage.text,
+        createdAt: moment(userMessage.createdAt).format('h:mm A')
+    });
+    messages.insertAdjacentHTML('beforeend', html);
+    autoscroll();
+});
+
+
+form.addEventListener('submit', (e) => {
+    e.preventDefault();
+
     const textMessage = input.value; //temporarily store in other variable
-    console.log('textMessage = ', textMessage); 
     
     sendButton.setAttribute('disabled', 'disabled'); //disable button to send message
 
     socket.emit('clientSentMsg', textMessage, (error) => {
         boilerPlate();
         if(error) {
-            return para1.textContent = error;
+            return;
         }    
     }); 
 });
 
-socket.on('serverSentMsg', (userMessage) => {
-    boilerPlate();
-    para1.textContent = `${userMessage}`;
-});
-
-socket.on('notification', (notification) => {
-    para2.textContent = notification;        
-});
 
 shareButton.addEventListener('click', () => {
 
@@ -52,4 +85,23 @@ shareButton.addEventListener('click', () => {
             console.log(ack);
         });
     });
+});
+
+socket.on('serverSentMsgLocation', (url) => {
+    const locationHTML = Mustache.render(locationTemplate, {
+        username: url.username,
+        url: url.location,
+        createdAt: moment(url.createdAt).format('h:mm A')
+    });
+    messages.insertAdjacentHTML('beforeend', locationHTML);
+    autoscroll();
+});
+
+socket.on('roomData', ({room, users}) => {
+    console.log({room, users});
+    const sidebarHTML = Mustache.render(sidebarTemplate, {
+        room: room,
+        users
+    });
+    sidebar.innerHTML = sidebarHTML;
 });
